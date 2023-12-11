@@ -8,8 +8,7 @@ output: html_document
 
 
 
-# Executive summary
-# Analysis
+# Prediction Analysis
 ## Loading data
 Loading the data and splitting it into training and testing Datasets
 ```{r setup, cache = F, echo = F, message = F, warning = F, tidy = F}
