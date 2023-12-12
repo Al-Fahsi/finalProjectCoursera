@@ -1,0 +1,162 @@
+---
+title: "CourseProjectRMD"
+author: "Fahsi"
+date: "11 12 2023"
+output: html_document
+---
+
+
+
+# Executive summary
+# Analysis
+## Loading data
+Loading the data and splitting it into training and testing Datasets
+```{r setup, cache = F, echo = F, message = F, warning = F, tidy = F}
+csv_train <- '/home/rstudio/Project/Proj/pml-training.csv'
+csv_test <- '/home/rstudio/Project/Proj/pml-testing.csv'
+
+training <- read.csv(file=csv_train,sep=',',header=T,na.strings=c("NA","NaN", "#DIV/0!"))
+testing<- read.csv(file=csv_test,sep=',',header=T,na.strings=c("NA","NaN", "#DIV/0!"))
+library(caret) 
+library(randomForest)
+set.seed(13234)
+testIndex = createDataPartition(training$classe, p = 0.30,list=FALSE)
+train = training[-testIndex,]
+test = training[testIndex,]
+```
+
+## Dealing with missing values (sparse variables) 
+Detecting and ignoring columns that do not fit logicaly as Predictors 
+```{r}
+na_values <- is.na(train)
+na_means<-colMeans(na_values)
+c <- (colMeans(na_values) < min(na_means[na_means>0]))
+train_1 <- train[,c]
+summary(c) 
+#New Training Data Set with 60 Columns  
+```
+
+  
+## Omitting sample specific variables
+droping Datafield that are not appropriate as predictors (time stamps, user name, ...)
+```{r}
+drop <-  c("X","user_name","raw_timestamp_part_1","raw_timestamp_part_2","cvtd_timestamp" ,"new_window","num_window")
+train_2 <- train_1[,!(names(train_1) %in% drop)]
+dim(train_2)
+```
+#Reduced dimensions.
+
+## Choosing a classification Model for prediction for this type of data 
+Training Data with Random Forest Model 
+```{r}
+train_2$classe <- as.factor(train_2$classe)
+ 
+response_variable <- "classe"
+predictors <- setdiff(names(train_2), response_variable)
+
+#Creating Random Forest Modell
+rf_model_1<-randomForest(classe ~ .,data=train_2)
+
+#Summary of the created model
+print(rf_model_1)
+```
+#Calculating Variable Significance
+#library(caret)
+
+```{r}
+imp <- varImp(rf_model_1)
+summary(imp)
+```
+
+#New Data set without Variables with lower significance 
+```{r}
+low_signific<-imp<95
+names(train_2[,low_signific])
+```
+
+#Droping Data with low Significance
+
+```{r}
+#Geo Coordinates data
+kuerzel_liste <- c("_x", "_y", "_z")
+
+# Drop columns containing _x, _y , _z
+train_3 <- train_2[, !grepl(paste(kuerzel_liste, collapse = "|"), names(train_2))]
+
+dim(train_3)
+#Other data with low significance 
+drop <-  c("total_accel_forearm", "total_accel_arm" )
+train_3 <- train_3[,!(names(train_3) %in% drop)]
+dim(train_3)
+```
+
+#Trying Random Forest Model with the new reduced training data 
+```{r}
+library(randomForest)
+library(caret)
+
+set.seed(123)
+
+# Define the training control for cross-validation
+ctrl <- trainControl(
+  method = "cv",        # Cross-validation
+  number = 5,           # Number of folds
+  verboseIter = TRUE    # Print progress
+)
+
+# Specify the formula for the model
+formula <- classe ~ .
+
+# Train the Random Forest model with cross-validation
+rf_model_2 <- train(
+  formula,
+  data = train_3,
+  method = "rf",
+  trControl = ctrl
+)
+
+# Print the results
+print(rf_model_2)
+
+# Access variable importance
+var_importance <- varImp(rf_model_2)
+print("Variable Importance:")
+print(var_importance)
+
+train_3$classe <- as.factor(train_3$classe)
+test$classe<- as.factor(test$classe)
+# Make predictions (replace "YourNewData" with your new data)
+# For example purposes, we'll use the same iris dataset
+predictions <- predict(rf_model_2, newdata = test)
+
+# Evaluate the model
+conf_matrix <- confusionMatrix(predictions, test$classe)
+print("Confusion Matrix:")
+print(conf_matrix)
+
+
+# Summary of additional metrics
+summary(conf_matrix)
+```
+
+# Plotting the confusion matrix with ggplot
+```{r}
+# Plotting the confusion matrix with ggplot
+conf_matrix_data <- as.data.frame(as.table(conf_matrix))
+
+# Plot the confusion matrix with ggplot2
+ggplot(conf_matrix_data, aes(x = Reference, y = Prediction, fill = Freq)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = sprintf("%d", Freq)), vjust = 1) +
+  scale_fill_gradient(low = "white", high = "blue") +
+  theme_minimal() +
+  labs(x = "Actual", y = "Predicted", fill = "Frequency")
+```
+
+## Predicting on the testing set using the Random Forest Model
+
+```{r}
+predict(rf_model_2,testing)
+```
+
+
